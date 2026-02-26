@@ -1,1 +1,3 @@
 car2x_log.csv
+__pycache__/
+*.pyc
