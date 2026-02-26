@@ -5,7 +5,6 @@
 normale Fahrzeuge im Umkreis informiert – und diese daraufhin kurzfristig Platz machen (verringern die Geschwindigkeit).
 
 ## Features
-## Features
 - 1D‑Straße mit diskreter Zeitschritt‑Simulation
 - Einsatzfahrzeug sendet periodisch PRIORITY‑Broadcasts (reichweite konfigurierbar)
 - Fahrzeuge, die die Nachricht empfangen und sich vor dem Einsatzfahrzeug befinden, wechseln temporär in den Zustand **YIELDING** und reduzieren ihre Geschwindigkeit
