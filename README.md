@@ -1,4 +1,3 @@
-
 # Car2X‑Minisimulation (Python)
 
 **Ziel:** Eine extrem einfache, lauffähige Simulation, die zeigt, wie ein Einsatzfahrzeug per Car2X‑Broadcast
@@ -74,3 +73,22 @@ Alternativ können dieselben Konstanten auch direkt oben in `car2x_simulation.py
 ## Hinweis
 Diese Minisimulation abstrahiert realen Car2X‑Standard (z. B. CAM/DENM) stark und dient nur als
 **anschauliches Demo‑Showcase** für Bewerbungszwecke.
+
+## Einschränkungen
+- **1D‑Modell:** Die Simulation verwendet nur eine eindimensionale Straße; kein Mehrspur‑ oder Überholverhalten.
+- **Vereinfachte Funk‑Reichweite:** Broadcast‑Reichweite ist idealisiert, ohne realistische Signalabschwächung oder Interferenzen.
+- **Kein Netzwerk‑Stack:** Es werden keine echten CAM/DENM‑Protokolle, Latenz‑ oder Paketverluste modelliert.
+- **Vereinfachte Fahrzeugdynamik:** Physik und komplexes Fahrerverhalten sind stark abstrahiert.
+- **Skalierbarkeit:** Für sehr viele Fahrzeuge ist die einfache In‑Memory‑Simulation nicht optimiert.
+- **Nicht produktiv / nicht sicherheitsrelevant:** Nicht für reale Einsätze oder Sicherheitsanalysen verwenden.
+
+## 3rd Party Licenses
+Dependencies are under their own licenses. The following 3rd party libraries are used:
+
+| Name        | License     | Type |
+|-------------|-------------|------|
+| streamlit   | Apache-2.0   | Web UI (Streamlit app) |
+| pandas      | BSD-3-Clause | Data processing / CSV |
+| altair      | BSD-3-Clause | Charts / visualization |
+| matplotlib  | PSF License  | Plotting (optional) |
+

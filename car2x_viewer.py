@@ -36,6 +36,9 @@ st.write("Diese Minisimulation abstrahiert realen Car2X‑Standard (z. B. CAM/
 # determine project root (directory of this file)
 ROOT = Path(__file__).resolve().parent
 
+# folder where simulation artifacts are written
+ARTIFACTS_DIR = ROOT / "artifacts"
+
 # Try to import the simulation module to obtain default configuration values
 SIM_DEFAULTS = {}
 try:
@@ -71,7 +74,7 @@ if uploaded:
 
 # Load local CSV from project
 if st.button("Load previous session"):
-    log_path = ROOT / "car2x_log.csv"
+    log_path = ARTIFACTS_DIR / "car2x_log.csv"
     if log_path.exists():
         st.session_state.df = pd.read_csv(log_path)
         st.success("Previous session loaded successfully.")
@@ -132,7 +135,7 @@ with st.sidebar:
                 # Run the temporary simulation
                 try:
                     subprocess.run([sys.executable, str(tmp_path)], check=True, capture_output=True, text=True)
-                    log_path = ROOT / "car2x_log.csv"
+                    log_path = ARTIFACTS_DIR / "car2x_log.csv"
                     if log_path.exists():
                         st.session_state.df = pd.read_csv(log_path)
                         st.success("Simulation ausgeführt und geladen.")

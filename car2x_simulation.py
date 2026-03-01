@@ -55,6 +55,9 @@ YIELD_SPEED = 5.0                 # m/s während des Platzmachens
 LOG_CSV = "car2x_log.csv"
 PLOT_PNG = "car2x_positions.png"
 
+# Output folder for generated artifacts (CSV + plots)
+OUTPUT_DIR = "artifacts"
+
 random.seed(SEED)
 
 # ----------------------------
@@ -153,7 +156,13 @@ def build_scene():
 # Simulation
 # ----------------------------
 
-def run_simulation(log_csv: str = LOG_CSV, plot_png: str = PLOT_PNG):
+def run_simulation(log_csv: str = LOG_CSV, plot_png: str = PLOT_PNG, output_dir: str = OUTPUT_DIR):
+    # Ensure artifacts directory exists and write outputs inside it.
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        log_csv = os.path.join(output_dir, os.path.basename(log_csv))
+        plot_png = os.path.join(output_dir, os.path.basename(plot_png))
+
     ev, vehicles = build_scene()
     broker = SimpleBroker(vehicles)
 
