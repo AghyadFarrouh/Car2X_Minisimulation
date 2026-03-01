@@ -1,31 +1,12 @@
-import streamlit as st
-import pandas as pd
-import altair as alt
-import subprocess
-import sys
+from __future__ import annotations
+
 from pathlib import Path
-import os
+import sys
+from typing import Any
 
-# --- Minimal runtime/version checks ---
-MIN_PY = (3, 7)
-if sys.version_info < MIN_PY:
-    raise SystemExit(f"Python {MIN_PY[0]}.{MIN_PY[1]}+ is required; running {sys.version}")
-
-try:
-    # importlib.metadata exists on Python >=3.8; for 3.7 the backport may not be installed
-    try:
-        import importlib.metadata as importlib_metadata
-    except Exception:
-        import importlib_metadata
-
-    def _pkg_ver(name: str) -> str:
-        try:
-            return importlib_metadata.version(name)
-        except Exception:
-            return "not installed"
-except Exception:
-    def _pkg_ver(name: str) -> str:
-        return "unknown"
+import altair as alt
+import pandas as pd
+import streamlit as st
 
 st.set_page_config(page_title="Car2X Simulation Viewer", layout="wide")
 
@@ -33,137 +14,148 @@ st.title("Car2X – Minisimulation Viewer")
 st.write("Eine extrem einfache, lauffähige Simulation, die zeigt, wie ein Einsatzfahrzeug per Car2X‑Broadcastnormale Fahrzeuge im Umkreis informiert – und diese daraufhin kurzfristig Platz machen (verringern die Geschwindigkeit).")
 st.write("Diese Minisimulation abstrahiert realen Car2X‑Standard (z. B. CAM/DENM) stark und dient nur als anschauliches Demo‑Showcase für Bewerbungszwecke.")
 
-# determine project root (directory of this file)
 ROOT = Path(__file__).resolve().parent
-
-# folder where simulation artifacts are written
 ARTIFACTS_DIR = ROOT / "artifacts"
+DEFAULT_LOG_PATH = ARTIFACTS_DIR / "car2x_log.csv"
 
-# Try to import the simulation module to obtain default configuration values
-SIM_DEFAULTS = {}
-try:
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("car2x_simulation", str(ROOT / "car2x_simulation.py"))
-    sim = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(sim)
-    SIM_DEFAULTS = {
-        "SEED": getattr(sim, "SEED", 42),
-        "ROAD_LENGTH_M": getattr(sim, "ROAD_LENGTH_M", 2000),
-        "DT": getattr(sim, "DT", 0.5),
-        "T_MAX": getattr(sim, "T_MAX", 120),
-        "N_VEHICLES": getattr(sim, "N_VEHICLES", 8),
-        "BASE_SPEED": getattr(sim, "BASE_SPEED", 22.0),
-        "EMERGENCY_SPEED": getattr(sim, "EMERGENCY_SPEED", 30.0),
-        "PRIORITY_BROADCAST_PERIOD": getattr(sim, "PRIORITY_BROADCAST_PERIOD", 1.0),
-        "PRIORITY_RADIUS": getattr(sim, "PRIORITY_RADIUS", 300.0),
-        "YIELD_Time": getattr(sim, "YIELD_Time", 10.0),
-        "YIELD_SPEED": getattr(sim, "YIELD_SPEED", 5.0),
+
+def _ensure_repo_on_path() -> None:
+    root_str = str(ROOT)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+
+def _get_simulation_module():
+    _ensure_repo_on_path()
+    import importlib
+
+    return importlib.import_module("car2x_simulation")
+
+
+def _simulation_defaults(simulation: Any) -> dict[str, Any]:
+    return {
+        "SEED": getattr(simulation, "SEED", 42),
+        "ROAD_LENGTH_M": getattr(simulation, "ROAD_LENGTH_M", 2000),
+        "DT": getattr(simulation, "DT", 0.5),
+        "T_MAX": getattr(simulation, "T_MAX", 120),
+        "N_VEHICLES": getattr(simulation, "N_VEHICLES", 8),
+        "BASE_SPEED": getattr(simulation, "BASE_SPEED", 22.0),
+        "EMERGENCY_SPEED": getattr(simulation, "EMERGENCY_SPEED", 30.0),
+        "PRIORITY_BROADCAST_PERIOD": getattr(simulation, "PRIORITY_BROADCAST_PERIOD", 1.0),
+        "PRIORITY_RADIUS": getattr(simulation, "PRIORITY_RADIUS", 300.0),
+        "YIELD_Time": getattr(simulation, "YIELD_Time", 10.0),
+        "YIELD_SPEED": getattr(simulation, "YIELD_SPEED", 5.0),
     }
-except Exception:
-    SIM_DEFAULTS = {}
 
-# session storage for dataframe
+
+def _load_csv(uploaded_file=None, path: Path | None = None) -> pd.DataFrame:
+    if uploaded_file is not None:
+        return pd.read_csv(uploaded_file)
+    if path is not None:
+        return pd.read_csv(path)
+    raise ValueError("Either uploaded_file or path must be provided")
+
+
+def _run_simulation(sim: Any, settings: dict[str, Any]) -> str:
+    for key, value in settings.items():
+        setattr(sim, key, value)
+
+    # Keep deterministic behavior aligned with SEED.
+    try:
+        sim.random.seed(sim.SEED)
+    except Exception:
+        pass
+
+    log_csv, _plot_png = sim.run_simulation(output_dir=str(ARTIFACTS_DIR))
+    return log_csv
+
 if "df" not in st.session_state:
     st.session_state.df = None
 
-# Toolbar: run simulation or load local CSV (stacked)
-# Upload CSV file
 uploaded = st.file_uploader("Lade eine CSV-Datei hoch", type=["csv"])
-if uploaded:
-    st.session_state.df = pd.read_csv(uploaded)
+if uploaded is not None:
+    st.session_state.df = _load_csv(uploaded_file=uploaded)
 
-# Load local CSV from project
 if st.button("Load previous session"):
-    log_path = ARTIFACTS_DIR / "car2x_log.csv"
-    if log_path.exists():
-        st.session_state.df = pd.read_csv(log_path)
+    if DEFAULT_LOG_PATH.exists():
+        st.session_state.df = _load_csv(path=DEFAULT_LOG_PATH)
         st.success("Previous session loaded successfully.")
     else:
-        st.error(f"Previous session not found: {log_path}")
+        st.error(f"Previous session not found: {DEFAULT_LOG_PATH}")
 
 
 
-# Sidebar: editable configuration
 with st.sidebar:
     st.header("Simulation settings")
-    seed = st.number_input("Seed", value=int(SIM_DEFAULTS.get("SEED", 42)), step=1)
-    road_length = st.number_input("Road length (m)", value=int(SIM_DEFAULTS.get("ROAD_LENGTH_M", 2000)), step=100)
-    dt = st.number_input("Time step (s)", value=float(SIM_DEFAULTS.get("DT", 0.5)), format="%.3f")
-    t_max = st.number_input("Simulation duration (s)", value=int(SIM_DEFAULTS.get("T_MAX", 120)), step=10)
-    n_vehicles = st.number_input("Number of vehicles", value=int(SIM_DEFAULTS.get("N_VEHICLES", 8)), step=1)
-    base_speed = st.number_input("Base speed (m/s)", value=float(SIM_DEFAULTS.get("BASE_SPEED", 22.0)), format="%.2f")
-    emergency_speed = st.number_input("Emergency speed (m/s)", value=float(SIM_DEFAULTS.get("EMERGENCY_SPEED", 30.0)), format="%.2f")
-    priority_period = st.number_input("Priority broadcast period (s)", value=float(SIM_DEFAULTS.get("PRIORITY_BROADCAST_PERIOD", 1.0)), format="%.2f")
-    priority_radius = st.number_input("Priority radius (m)", value=float(SIM_DEFAULTS.get("PRIORITY_RADIUS", 300.0)), step=10.0, format="%.1f")
-    yield_time = st.number_input("Yield time (s)", value=float(SIM_DEFAULTS.get("YIELD_Time", 10.0)), format="%.1f")
-    yield_speed = st.number_input("Yield speed (m/s)", value=float(SIM_DEFAULTS.get("YIELD_SPEED", 5.0)), format="%.2f")
 
-    if st.button("Run simulation with these settings"):
-        # Read original simulation source
-        sim_path = ROOT / "car2x_simulation.py"
-        try:
-            content = sim_path.read_text(encoding="utf-8")
+    try:
+        sim = _get_simulation_module()
+        defaults = _simulation_defaults(sim)
+    except Exception as e:
+        sim = None
+        defaults = {}
+        st.error(f"Could not import simulation module: {e}")
 
-            start_marker = "# ----------------------------\n# Konfiguration\n# ----------------------------\n"
-            start = content.find(start_marker)
-            end = content.find("LOG_CSV", start) if start != -1 else -1
-            if start == -1 or end == -1:
-                st.error("Konnte Konfigurationsabschnitt in car2x_simulation.py nicht finden.")
-            else:
-                # Build new config block
-                new_block = (
-                    start_marker
-                    + f"SEED = {int(seed)}\n"
-                    + f"ROAD_LENGTH_M = {int(road_length)}\n"
-                    + f"DT = {float(dt)}\n"
-                    + f"T_MAX = {int(t_max)}\n\n"
-                    + f"N_VEHICLES = {int(n_vehicles)}\n"
-                    + f"BASE_SPEED = {float(base_speed)}\n"
-                    + f"EMERGENCY_SPEED = {float(emergency_speed)}\n\n"
-                    + f"PRIORITY_BROADCAST_PERIOD = {float(priority_period)}\n"
-                    + f"PRIORITY_RADIUS = {float(priority_radius)}\n"
-                    + f"YIELD_Time = {float(yield_time)}\n"
-                    + f"YIELD_SPEED = {float(yield_speed)}\n\n"
-                )
+    seed = st.number_input("Seed", value=int(defaults.get("SEED", 42)), step=1)
+    road_length = st.number_input("Road length (m)", value=int(defaults.get("ROAD_LENGTH_M", 2000)), step=100)
+    dt = st.number_input("Time step (s)", value=float(defaults.get("DT", 0.5)), format="%.3f")
+    t_max = st.number_input("Simulation duration (s)", value=int(defaults.get("T_MAX", 120)), step=10)
+    n_vehicles = st.number_input("Number of vehicles", value=int(defaults.get("N_VEHICLES", 8)), step=1)
+    base_speed = st.number_input("Base speed (m/s)", value=float(defaults.get("BASE_SPEED", 22.0)), format="%.2f")
+    emergency_speed = st.number_input(
+        "Emergency speed (m/s)", value=float(defaults.get("EMERGENCY_SPEED", 30.0)), format="%.2f"
+    )
+    priority_period = st.number_input(
+        "Priority broadcast period (s)",
+        value=float(defaults.get("PRIORITY_BROADCAST_PERIOD", 1.0)),
+        format="%.2f",
+    )
+    priority_radius = st.number_input(
+        "Priority radius (m)",
+        value=float(defaults.get("PRIORITY_RADIUS", 300.0)),
+        step=10.0,
+        format="%.1f",
+    )
+    yield_time = st.number_input("Yield time (s)", value=float(defaults.get("YIELD_Time", 10.0)), format="%.1f")
+    yield_speed = st.number_input("Yield speed (m/s)", value=float(defaults.get("YIELD_SPEED", 5.0)), format="%.2f")
 
-                new_content = content[:start] + new_block + content[end:]
-
-                # Write temporary simulation file
-                tmp_path = ROOT / "car2x_simulation_tmp.py"
-                tmp_path.write_text(new_content, encoding="utf-8")
-
-                # Run the temporary simulation
-                try:
-                    subprocess.run([sys.executable, str(tmp_path)], check=True, capture_output=True, text=True)
-                    log_path = ARTIFACTS_DIR / "car2x_log.csv"
-                    if log_path.exists():
-                        st.session_state.df = pd.read_csv(log_path)
-                        st.success("Simulation ausgeführt und geladen.")
-                    else:
-                        st.warning(f"Simulation beendet, aber {log_path.name} nicht gefunden.")
-                except subprocess.CalledProcessError as e:
-                    st.error(f"Fehler beim Ausführen der Simulation: {e}")
-                    if e.stdout:
-                        st.text(e.stdout)
-                    if e.stderr:
-                        st.text(e.stderr)
-                finally:
-                    try:
-                        os.remove(tmp_path)
-                    except Exception:
-                        pass
-        except Exception as e:
-            st.error(f"Fehler beim Vorbereiten der Simulation: {e}")
+    if st.button("Run simulation with these settings", disabled=(sim is None)):
+        settings = {
+            "SEED": int(seed),
+            "ROAD_LENGTH_M": int(road_length),
+            "DT": float(dt),
+            "T_MAX": int(t_max),
+            "N_VEHICLES": int(n_vehicles),
+            "BASE_SPEED": float(base_speed),
+            "EMERGENCY_SPEED": float(emergency_speed),
+            "PRIORITY_BROADCAST_PERIOD": float(priority_period),
+            "PRIORITY_RADIUS": float(priority_radius),
+            "YIELD_Time": float(yield_time),
+            "YIELD_SPEED": float(yield_speed),
+        }
+        with st.spinner("Running simulation..."):
+            try:
+                log_csv = _run_simulation(sim, settings)
+                st.session_state.df = _load_csv(path=Path(log_csv))
+                st.success("Simulation ausgeführt und geladen.")
+            except Exception as e:
+                st.error(f"Fehler beim Ausführen der Simulation: {e}")
 
 # If we have a dataframe (from any source), show it
 df = st.session_state.df
 if df is not None:
+    required_cols = {"vehicle_id", "Time", "position", "speed", "state"}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        st.error(f"CSV fehlt Spalten: {', '.join(sorted(missing_cols))}")
+        st.stop()
+
     st.subheader("Rohdaten (CSV)")
     st.dataframe(df, use_container_width=True)
 
     st.subheader("Fahrzeuge filtern")
-    vehicles = df["vehicle_id"].unique()
-    selected = st.multiselect("Wähle Fahrzeuge", vehicles, default=list(vehicles))
+    vehicles = df["vehicle_id"].unique().tolist()
+    selected = st.multiselect("Wähle Fahrzeuge", vehicles, default=vehicles)
 
     plot_df = df[df["vehicle_id"].isin(selected)]
 
@@ -187,7 +179,7 @@ if df is not None:
     st.write("Anteil der Zeit in YIELDING vs NORMAL")
 
     state_summary = (
-        df.groupby(["vehicle_id", "state"]) 
+        df.groupby(["vehicle_id", "state"])
         .size()
         .reset_index(name="count")
         .pivot(index="vehicle_id", columns="state", values="count")
