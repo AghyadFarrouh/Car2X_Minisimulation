@@ -18,7 +18,7 @@ Parametertuning: Unten im Abschnitt "Konfiguration" anpassen.
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 import math
-import random
+import random as _random
 import csv
 import os
 
@@ -58,7 +58,9 @@ PLOT_PNG = "car2x_positions.png"
 # Output folder for generated artifacts (CSV + plots)
 OUTPUT_DIR = "artifacts"
 
-random.seed(SEED)
+# Use an explicit RNG instance so callers can reseed deterministically
+# (the `random` name remains available and exposes `seed()` for compatibility)
+random = _random.Random(SEED)
 
 # ----------------------------
 # Modelle
@@ -114,24 +116,18 @@ class SimpleBroker:
     """
     def __init__(self, vehicles: List[Vehicle]):
         self.vehicles = vehicles
-
     def broadcast(self, msg: Message, emergency: EmergencyVehicle):
+        # Inline delivery: simpler and avoids a separate method.
+        if msg.msg_type != "PRIORITY":
+            return
+        radius = msg.payload.get("radius", PRIORITY_RADIUS)
         for v in self.vehicles:
             if v.vid == emergency.vid:
                 continue
-            self.deliver(msg, v, emergency)
-
-    def deliver(self, msg: Message, receiver: Vehicle, emergency: EmergencyVehicle):
-        # Einfache Empfangslogik: nur wenn im Radius und vor dem Einsatzfahrzeug
-        if msg.msg_type == "PRIORITY":
-            dx = receiver.position - emergency.position
-            in_front = dx > 0
-            in_radius = abs(dx) <= msg.payload.get("radius", PRIORITY_RADIUS)
-            if in_front and in_radius:
-                # Receiver macht Platz, wenn nicht bereits yielding
-                if receiver.state != "YIELDING":
-                    receiver.state = "YIELDING"
-                    receiver.yield_timer = YIELD_Time
+            dx = v.position - emergency.position
+            if dx > 0 and abs(dx) <= radius and v.state != "YIELDING":
+                v.state = "YIELDING"
+                v.yield_timer = YIELD_Time
 
 # ----------------------------
 # Aufbau der Szene
