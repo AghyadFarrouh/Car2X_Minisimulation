@@ -33,6 +33,25 @@ COLOR_MAP = {
 }
 
 
+def _ensure_time_column(df):
+    """Ensure dataframe has a numeric 't' column. Accept common variants like 'Time'."""
+    df = df.copy()
+    df.columns = [c.strip() for c in df.columns]
+    cols_lower = {c.lower(): c for c in df.columns}
+
+    if 't' not in df.columns:
+        # prefer exact 'Time' or case-insensitive matches
+        for candidate in ('t', 'time', 'timestamp', 'step', 'timestep'):
+            if candidate in cols_lower:
+                df = df.rename(columns={cols_lower[candidate]: 't'})
+                break
+
+    # Try convert to numeric
+    if 't' in df.columns:
+        df['t'] = pd.to_numeric(df['t'], errors='coerce')
+    return df
+
+
 def _segment_state_intervals(df):
     """Für jedes Fahrzeug zusammenhängende Zeitintervalle je Zustand bestimmen.
 
@@ -176,12 +195,23 @@ def main():
 
     df = pd.read_csv(csv_path)
 
+    # Ensure we have a numeric 't' column (accept 'Time' / 'timestamp' variants)
+    df = _ensure_time_column(df)
+    if 't' not in df.columns or df['t'].isna().all():
+        print('CSV enthält keine gültige Zeit-Spalte (erwartet "t" oder "Time").')
+        sys.exit(2)
+
+    # Write outputs into same directory as the CSV (e.g., artifacts)
+    out_dir = os.path.dirname(os.path.abspath(csv_path)) or os.getcwd()
+    png_path = os.path.join(out_dir, 'car2x_timeline.png')
+    html_path = os.path.join(out_dir, 'car2x_timeline.html')
+
     # Basistimeline (PNG)
-    png = plot_timeline(df)
+    png = plot_timeline(df, out_png=png_path)
     print('PNG geschrieben:', png)
 
     # Interaktive Version (optional)
-    html = plot_timeline_interactive(df)
+    html = plot_timeline_interactive(df, out_html=html_path)
     if html:
         print('HTML geschrieben:', html)
     else:

@@ -17,6 +17,7 @@ st.write("Diese Minisimulation abstrahiert realen Car2X‑Standard (z. B. CAM/
 ROOT = Path(__file__).resolve().parent
 ARTIFACTS_DIR = ROOT / "artifacts"
 DEFAULT_LOG_PATH = ARTIFACTS_DIR / "car2x_log.csv"
+TIMELINE_PNG_PATH = ARTIFACTS_DIR / "car2x_timeline.png"
 
 
 def _ensure_repo_on_path() -> None:
@@ -68,6 +69,26 @@ def _run_simulation(sim: Any, settings: dict[str, Any]) -> str:
 
     log_csv, _plot_png = sim.run_simulation(output_dir=str(ARTIFACTS_DIR))
     return log_csv
+
+
+def _get_timeline_module():
+    _ensure_repo_on_path()
+    import importlib
+
+    return importlib.import_module("car2x_timeline")
+
+
+def _generate_timeline_artifacts(df: pd.DataFrame) -> Path | None:
+    timeline = _get_timeline_module()
+    timeline_df = timeline._ensure_time_column(df.copy())
+
+    if "t" not in timeline_df.columns or timeline_df["t"].isna().all():
+        raise ValueError("CSV enthält keine gültige Zeit-Spalte (erwartet 't' oder 'Time').")
+
+    png_out = timeline.plot_timeline(timeline_df, out_png=str(TIMELINE_PNG_PATH))
+
+    png_path = Path(png_out) if png_out else None
+    return png_path
 
 if "df" not in st.session_state:
     st.session_state.df = None
@@ -138,6 +159,13 @@ with st.sidebar:
                 log_csv = _run_simulation(sim, settings)
                 st.session_state.df = _load_csv(path=Path(log_csv))
                 st.success("Simulation ausgeführt und geladen.")
+
+                try:
+                    png_path = _generate_timeline_artifacts(st.session_state.df)
+                    if png_path is not None:
+                        st.success(f"Timeline PNG geschrieben: {png_path}")
+                except Exception as timeline_error:
+                    st.warning(f"Simulation erfolgreich, aber Timeline konnte nicht erzeugt werden: {timeline_error}")
             except Exception as e:
                 st.error(f"Fehler beim Ausführen der Simulation: {e}")
 
@@ -187,5 +215,12 @@ if df is not None:
     )
 
     st.dataframe(state_summary, use_container_width=True)
+
+    st.subheader("Car2X Timeline Ergebnisse")
+
+    if TIMELINE_PNG_PATH.exists():
+        st.image(str(TIMELINE_PNG_PATH), caption="car2x_timeline.png", use_container_width=True)
+    else:
+        st.info("Noch kein Timeline-PNG gefunden. Es wird beim Ausführen der Simulation automatisch erzeugt.")
 else:
     st.info("Bitte starte die Simulation.")

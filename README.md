@@ -48,7 +48,7 @@ python -m streamlit run car2x_viewer.py
 ```
 
 Hinweise:
-- `requirements.txt` listet `streamlit`, `pandas`, `altair` und `matplotlib` (optional) — für die Viewer‑UI sind `streamlit`, `pandas` und `altair` nötig.
+- `requirements.txt` listet `streamlit`, `pandas`, `altair`, `matplotlib` und `plotly` (optional) — für die Viewer‑UI sind `streamlit`, `pandas` und `altair` nötig.
 - `car2x_viewer.py` enthält eine kurze Runtime/Version‑Prüfung (Python >= 3.7) und zeigt Fehlermeldungen, falls Abhängigkeiten fehlen.
 - Auf Windows können Antivirus/Permissions das Schreiben von `car2x_log.csv` verhindern; stelle sicher, dass der Prozess Schreibrechte im Projektordner hat.
 
@@ -91,4 +91,5 @@ Dependencies are under their own licenses. The following 3rd party libraries are
 | pandas      | BSD-3-Clause | Data processing / CSV |
 | altair      | BSD-3-Clause | Charts / visualization |
 | matplotlib  | PSF License  | Plotting (optional) |
+| plotly      | MIT License  | Interactive timeline (optional HTML output) |
 
